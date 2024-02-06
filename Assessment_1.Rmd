@@ -1,0 +1,251 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+# Assessment 1 
+library(tidyverse)
+
+#Save filepath to variable
+file_path <- "~/code/UoA/Data Taming/Assignment 1 - Data Set/ashes.csv"
+
+#Parse csv
+ashes_raw <- read.csv(file_path)
+ashes_tibble <- as_tibble(ashes_raw)
+
+# 1.1 
+# Begin tidying. Transform data to long form
+ashes_long <- gather(ashes_tibble, key = "innings", value = "Test", 
+  "Test.1..Innings.1", "Test.1..Innings.2",
+  "Test.2..Innings.1", "Test.2..Innings.2",
+  "Test.3..Innings.1", "Test.3..Innings.2",
+  "Test.4..Innings.1", "Test.4..Innings.2",
+  "Test.5..Innings.1", "Test.5..Innings.2")
+
+#index tests
+#innings <- "Test.5..Innings.1"
+#index_to_extract <- 17  # 
+#value_at_index <- substr(innings_value, index_to_extract, index_to_extract)
+#cat("Value at index", index_to_extract, ":", value_at_index, "\n")
+
+#Moving variables into own column. Using index in <chr> string to access values. Transform to integer
+ashes_long <- mutate(ashes_long,
+  batting_number = as.integer(str_match(Test, "Batting at number (\\d+)")[, 2]),
+  score = as.integer(str_match(Test, "scored (\\d+) runs")[, 2]),
+  balls_faced = as.integer(str_match(Test, "from (\\d+) balls")[, 2])
+  )
+#removing the test variable
+ashes_long <- select(ashes_long, -Test)
+#removing rows with NAs. Needed to calculate accurate summaries. Comment out when calculating appereances
+ashes_long <- na.omit(ashes_long)
+#tame innings column. Could not get index to work... Used regex (gross :d)
+ashes_long <- mutate(ashes_long,
+  test = as.integer(str_extract(innings, "\\d+(?=[.])")),
+  innings = as.integer(str_extract(innings, "\\d+(?=[^1]*$)"))
+)
+#tame column order
+ashes_long <- select(ashes_long, "batter", "team", "role", "test", "innings", "batting_number", "score", "balls_faced")
+
+#1.2
+# tame categorical variables with simple levels
+ashes_long <- mutate(ashes_long,
+  team = as.factor(team),
+  role = as.factor(role)
+)
+
+#1.3 
+#tame catergorical variables values
+recoding_role_map <- c(
+  "batter" = "bat",
+  "batter" = "batting",
+  "batter" = "batsman",
+  "bowler" = "bowl",
+  "bowler" = "bowler",
+  "wicket keeper" = "wicketkeeper",
+  "all rounder" = "allrounder",
+  "all rounder" = "all-rounder"
+)
+ashes_long <- mutate(ashes_long, role = fct_recode(role, !!!recoding_role_map))
+
+unique(ashes_long$role)
+
+recoding_batter_map <- c(
+  "S.Marsh" = "SMarsh",
+  "M.Marsh" = "MMarsh"
+)
+ashes_long <- mutate(ashes_long, batter = fct_recode(batter, !!!recoding_batter_map))
+#ashes_long[17,]
+
+recoding_team_map <- c(
+  "England" = "England",
+  "England" = "English",
+  "Australia" = "Australia"
+)
+ashes_long <- mutate(ashes_long, team = fct_recode(team, !!!recoding_team_map))
+#ashes_long$team
+
+#2.1 Histogram of all scores
+ggplot(ashes_long, aes(x = score)) +
+  geom_histogram() 
+
+#2.2 Distribution summary
+# Scores in the series are right skewed in disribution, which means the majority were towards the lower end.  The distribution is a single peak unimodel with a long tail for the fewer high scores. The middle point of the data is 18 and the average score is 32.09. With a standard deviation of 41.30, there is a moderate variation from the mean.  There are a handful of notable outliers at the higher end. The 5 numbers summary below provides some futher insight to the distribution summary.     
+summary(ashes_long$score)
+print(sd(ashes_long$score))
+
+#2.3  Participation bar chart, team colours, player count
+#ashes_long$team 
+#unique(ashes_long$batter)
+# Save to team count to variables
+unique_batters_australia <- unique(ashes_long$batter[ashes_long$team == "Australia"])
+unique_batters_england <- unique(ashes_long$batter[ashes_long$team == "England"])
+# Save variables to new data frame
+unique_batters_data <- data.frame(
+  team = c("Australia", "England"),
+  unique_batters = c(length(unique_batters_australia), length(unique_batters_england))
+  )
+# Plot Team by Unique
+ggplot(unique_batters_data, aes(x = team, y = unique_batters, fill = team)) +
+  geom_bar(stat = "identity") +
+  ggtitle("Unique Players by Team") +
+  scale_fill_manual(values = c("Australia" = "green", "England" = "blue"))
+#Print number of players by team in a string
+cat("Australia used", length(unique_batters_australia), "players. England used", length(unique_batters_england), "players.")
+
+# Question 3 Bivariate Analysis
+# check & visualise the data
+team_scores <- count(ashes_long, team)
+
+australia_data <- ashes_long %>%
+  filter(team == "Australia") 
+england_data <- ashes_long %>%
+  filter(team == "England")
+  
+# Histograms faceted by team
+ggplot(australia_data, aes(x = batter, y = score)) +
+  geom_bar(stat = "identity", fill = "green", color = "black") +
+  labs(title = "Series for Team Australia",
+       x = "Batter",
+       y = "Score"
+       ) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+ggplot(england_data, aes(x = batter, y = score)) +
+  geom_bar(stat = "identity", fill = "blue", color = "black") +
+  labs(title = "Series for Team England",
+       x = "Batter",
+       y = "Score"
+       ) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+# Categorical v Quantitative, so use boxplot
+ggplot(ashes_long, aes(x = as_factor(team), y = score, fill = team)) +
+ scale_fill_manual(values = c("Australia" = "green", "England" = "blue")) +
+ labs(title = "Series Batter Scores by Team",
+       x = "Team",
+       y = "Score") +
+ geom_boxplot()
+
+# Describe distributions. Include shape, location spread and outliers. Which team had highest average score
+
+# Get the 5 stats and SDs
+#summary(australia_data$score)
+#summary(england_data$score)
+#sd(australia_data$score)
+#sd(england_data$score)
+
+#The summary
+#The contributation of Australian batters to score across the series were  right skewed and unimodel (australia_data historgram). The spread of scores ranged from 10 in Q1 through to 52.50 in Q4 with a median of 24 (summary(australia_data$score)). There were 6 outliers in the upper end.
+
+#English batters scores across the series were more symmetric in nature (england_data historgram). The spread of scores ranged from 4 in Q1 through to 36 in Q4 with a median of 15 (summary(england_data$score)). There were 3 outliers in the upper end.
+
+#If looking for the series average, Australia had the highest (41.71). It should be noted because of outliers in the data, the median is a better represenation of the middle point ("Series Batter Scores by Team"). The median for Australia (24) was also higher than England (15). 
+
+#Question 4
+
+#Sactterplot score v balls faced
+ggplot(ashes_long, aes(x = balls_faced, y = score)) +
+ geom_point()
+
+# Describe
+#Pearson´s correlation is 0.95, indicating a very strong positive relationship between the number of balls faced and score. Players facing more balls are highly likely to score more runs.
+cor(ashes_long$balls_faced,ashes_long$score)
+
+# Add a variable scoring rate. Produce scatterplot
+ashes_long <- ashes_long %>%
+  mutate(scoring_rate = as.numeric(score) / as.numeric(balls_faced))
+#ashes_long$scoring_rate
+ggplot(ashes_long, aes(x = balls_faced, y = scoring_rate)) +
+ geom_point()
+ 
+# Describe
+#There is a symmetrical relationship between scoring rate and balls faced, with most data located between the scoring rate of .25 to .75 runs per ball. The highest scoring rate outliers are found in batters facing the fewest amount of balls. 
+
+# Question 5
+#TODO Bar chart by player roles
+#inspect data
+unique(ashes_long$role)
+#save team and roles by team to variables
+aus_uk <- c("Australia", "England")
+roles_by_team <- ashes_long %>%
+  filter(team %in% aus_uk) %>%
+  group_by(team, role) %>%
+  summarise(unique_players = n_distinct(batter))
+#check output
+roles_by_team$unique_players
+aus_uk
+# Canvas proportional bar chart with segments by role
+ggplot(roles_by_team, aes(x = team, y = unique_players, fill = role)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Team Players by Role",
+       x = "Team",
+       y = "Number of Players") 
+
+# Contingency table
+# save total number of unique players to variable
+total_role <- sum(roles_by_team$unique_players)
+#Add new proportion coloumn
+proportional_roles_by_team <- roles_by_team %>%
+  mutate(proportion_of_role = as.numeric(unique_players / total_role))
+
+# Describe
+#Looking at proportional_roles_by_team, Australia has a higher proportion of batters (0.222) compared to England (0.185).
+#For all rounders, England has a higher proportion (0.0741) in comparison to Australia (0.0370).
+
+#Question 6 - Key Findings
+#count total scores by team
+eng_total_score <- sum(england_data$score)
+au_total_score <- sum(australia_data$score)
+smith_data <- australia_data[australia_data$batter == "Smith", ]
+smith_total_score <- sum(smith_data$score)
+malan_data <- england_data[england_data$batter == "Malan", ]
+malan_total_score <- sum(malan_data$score)
+
+#Through-out the series Australia (13) and England (14) selected a similiar core group of players (unique_batters_data). Where the decision making process differed was with Englands decision to play more all rounders at times in the series. 7% of English players were all rounders, Australia had 3%. Australia opted to deploy more dedicated batters (22%) compared to England (18%). This data can be seen in (proportional_roles_by_team). 
+
+#It was a big summer for Australian run making. Team Australia scored more (2920 v 2503) and had more players, making the bigger scores throughout the series. Marsh, Smith and Warner, all speciliased batters, cashed in with more than 400 runs each ("Series for Team Australia"). No England player matched this level of scoring (Series for Team England"). There was also a clear star player, Australia´s Smith (687) nearly doubled the best English batsman (Malan, 383). 
+
+#The boxplot "Series Batter Scores by Team" clearly displays the higher median score and additional outliers in the upper tail for team Australia (summary(ashes_long$score). 
+
+#The lack of an elite batter to match Smith combined with a decision to select an additional all rounder appears to have contributed to the lower English scoring in the series. 
+
+
